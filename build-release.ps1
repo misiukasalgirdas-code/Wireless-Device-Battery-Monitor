@@ -18,13 +18,15 @@ $release = Join-Path $target 'release'
 $env:BH_PAYLOAD_DIR = $release
 cargo build --release --manifest-path installer\Cargo.toml
 if ($LASTEXITCODE) { throw 'setup build failed' }
+# The setup is its own crate: without CARGO_TARGET_DIR it builds into installer\target.
+$setupDir = Join-Path (cargo metadata --format-version 1 --no-deps --manifest-path installer\Cargo.toml | ConvertFrom-Json).target_directory 'release'
 
 $version = (Get-Content VERSION -Raw).Trim()
 $label = 'v' + ($version -replace '\.0$', '')
 Remove-Item release -Recurse -Force -ErrorAction SilentlyContinue
 New-Item -ItemType Directory release | Out-Null
 foreach ($e in 'Taskbar') {
-    Copy-Item (Join-Path $release "BatteryHub-$e-Setup.exe") "release\BatteryHub-$e-Setup-$label.exe"
+    Copy-Item (Join-Path $setupDir "BatteryHub-$e-Setup.exe") "release\BatteryHub-$e-Setup-$label.exe" -ErrorAction Stop
 }
 Get-ChildItem release\*.exe | ForEach-Object { '{0}  {1}' -f (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower(), $_.Name } |
     Set-Content release\SHA256SUMS.txt -Encoding ascii
