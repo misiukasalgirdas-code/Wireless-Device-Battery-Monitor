@@ -6,6 +6,7 @@ pub mod ble;
 pub mod device;
 pub mod drivers;
 pub mod hid;
+pub mod i18n;
 pub mod install;
 pub mod listen;
 pub mod report;

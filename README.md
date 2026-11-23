@@ -9,7 +9,7 @@ in about <b>0.2 MB of RAM</b>.
 </p>
 
 <p align="center">
-<a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/ferloom/Wireless-Device-Battery-Monitor?label=download&logo=windows" alt="Latest release"></a>
+<a href="../../releases/latest"><img src="https://img.shields.io/github/v/release/misiukasalgirdas-code/Wireless-Device-Battery-Monitor?label=download&logo=windows" alt="Latest release"></a>
 <a href="../../actions/workflows/ci.yml"><img src="../../actions/workflows/ci.yml/badge.svg" alt="CI"></a>
 <img src="https://img.shields.io/badge/written%20in-Rust-dea584?logo=rust" alt="Written in Rust">
 <img src="https://img.shields.io/badge/license-GPL--3.0-blue" alt="GPL-3.0">
@@ -29,12 +29,19 @@ in about <b>0.2 MB of RAM</b>.
 > This recode is still **not the original**, but it **is supported and will stay supported**: it keeps being developed and updated, with new devices added from [device requests](../../issues).
 
 Developed by [@ferloom](https://github.com/ferloom) with the help of Claude (AI).
+This fork by [@misiukasalgirdas-code](https://github.com/misiukasalgirdas-code) adds a **Lithuanian** user interface (see [Languages](#languages)); updates and device requests go to this fork.
+
+## Languages
+
+The interface is available in **English** and **Lithuanian** (lietuvių). On a Lithuanian Windows it starts in Lithuanian, otherwise in English; switch any time with **Language** in the right-click menu. The choice is saved as `Language` (`en` / `lt`) under `HKCU\Software\BatteryHub\Taskbar`. The setup follows the same choice. Device requests sent to GitHub stay in English.
+
+Sąsaja yra **anglų** ir **lietuvių** kalbomis. Lietuviškoje Windows programa pasileidžia lietuviškai; kalbą galima pakeisti bet kada dešiniuoju pelės mygtuku atidarius meniu **Kalba**.
 
 ---
 
 ## Contents
 
-[Download](#download) · [Problem with a new version?](#problem-with-a-new-version-downgrade-and-report-it) · [Features](#features) · [Using it](#using-it) · [Setup](#setup-install--update--uninstall) · [Resource usage vs. the original](#resource-usage-vs-the-original) · [Taskbar compatibility](#taskbar-compatibility) · [Supported devices](#supported-devices) · [Testing](#testing) · [Building](#building-from-source) · [License](#license)
+[Download](#download) · [Languages](#languages) · [Problem with a new version?](#problem-with-a-new-version-downgrade-and-report-it) · [Features](#features) · [Using it](#using-it) · [Setup](#setup-install--update--uninstall) · [Resource usage vs. the original](#resource-usage-vs-the-original) · [Taskbar compatibility](#taskbar-compatibility) · [Supported devices](#supported-devices) · [Testing](#testing) · [Building](#building-from-source) · [License](#license)
 
 ## Download
 

@@ -11,6 +11,7 @@ use std::ffi::c_void;
 use std::time::Instant;
 
 use batteryhub::device::Missing;
+use batteryhub::i18n::{self, tr, trf};
 use batteryhub::settings;
 use batteryhub::ui::{self, rgb, split};
 use batteryhub::{DeviceKind, DeviceStatus};
@@ -94,6 +95,8 @@ const POSITION_OFFSETS: [u32; 11] = [0, 20, 40, 60, 80, 100, 120, 140, 160, 180,
 const ID_HEIGHT_FIRST: usize = 100;
 const ID_HEIGHT_CUSTOM: usize = 115;
 const HEIGHT_OFFSETS: [i32; 7] = [-15, -10, -5, 0, 5, 10, 15];
+/// "Language": ID_LANG_FIRST + i for i18n::Lang::ALL[i].
+const ID_LANG_FIRST: usize = 120;
 
 pub const MAIN_CLASS: windows::core::PCWSTR = w!("BatteryHub.Taskbar.Main");
 const STRIP_CLASS: windows::core::PCWSTR = w!("BatteryHub.Taskbar.Strip");
@@ -402,7 +405,7 @@ impl App {
                 gap_after: px(5.0),
             });
             let t = if !d.level_text.is_empty() && d.percent < 0 {
-                d.level_text.clone()
+                i18n::tr_any(&d.level_text).to_string()
             } else if d.percent >= 0 {
                 format!("{}%", d.percent)
             } else {
@@ -892,7 +895,7 @@ impl App {
             })
             .collect();
         if wanted.is_empty() {
-            wanted.push(("\u{0}none".into(), "-".into(), normal, -1, "BatteryHub: no devices found".into()));
+            wanted.push(("\u{0}none".into(), "-".into(), normal, -1, tr("BatteryHub: no devices found").into()));
         }
         let keep: HashSet<String> = wanted.iter().map(|w| w.0.clone()).collect();
         let stale: Vec<String> = self.tray.keys().filter(|k| !keep.contains(*k)).cloned().collect();
@@ -1030,16 +1033,16 @@ impl App {
     fn tip_text(&self, i: usize) -> String {
         let devices = self.visible();
         let Some(d) = devices.get(i) else {
-            return "BatteryHub: no devices found".into();
+            return tr("BatteryHub: no devices found").into();
         };
         let level = d.level();
         let numeric = level.ends_with('%');
         let state = if d.asleep {
-            " (asleep)"
+            tr(" (asleep)")
         } else if d.is_full() && numeric {
-            " (full)"
+            tr(" (full)")
         } else if d.charging && numeric {
-            " (charging)"
+            tr(" (charging)")
         } else {
             ""
         };
@@ -1276,7 +1279,7 @@ impl App {
 
 /// A check or download is running (the menu item is greyed out meanwhile).
 static UPDATE_BUSY: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
-const UPDATE_TITLE: windows::core::PCWSTR = w!("BatteryHub - Check for updates");
+const UPDATE_TITLE: &str = "BatteryHub - Check for updates";
 
 /// Runs `work` on a worker thread and posts its boxed result to `hwnd` as `msg`.
 fn post_from_thread<T: Send + 'static>(hwnd: HWND, msg: u32, work: impl FnOnce() -> T + Send + 'static) {
@@ -1310,7 +1313,7 @@ fn message(owner: HWND, text: &str, style: MESSAGEBOX_STYLE) -> MESSAGEBOX_RESUL
         MessageBoxW(
             Some(owner),
             &windows::core::HSTRING::from(text),
-            UPDATE_TITLE,
+            &windows::core::HSTRING::from(tr(UPDATE_TITLE)),
             style | MB_SETFOREGROUND | MB_TOPMOST,
         )
     }
@@ -1335,10 +1338,9 @@ fn on_update_checked(main: HWND, check: batteryhub::update::Check) {
             UPDATE_BUSY.store(false, std::sync::atomic::Ordering::Relaxed);
             message(
                 main,
-                &format!(
-                    "No new updates.\n\nYou have the latest version ({}).\nLatest release on GitHub: {}.",
-                    version_label(),
-                    label_of(&latest)
+                &trf(
+                    "No new updates.\n\nYou have the latest version ({0}).\nLatest release on GitHub: {1}.",
+                    &[&version_label(), &label_of(&latest)],
                 ),
                 MB_OK | MB_ICONINFORMATION,
             );
@@ -1347,9 +1349,9 @@ fn on_update_checked(main: HWND, check: batteryhub::update::Check) {
             UPDATE_BUSY.store(false, std::sync::atomic::Ordering::Relaxed);
             message(
                 main,
-                &format!(
-                    "Could not check for updates:\n{e}\n\nNew versions are also on GitHub:\nhttps://github.com/{}/releases",
-                    batteryhub::update::REPO
+                &trf(
+                    "Could not check for updates:\n{0}\n\nNew versions are also on GitHub:\nhttps://github.com/{1}/releases",
+                    &[&e, &batteryhub::update::REPO],
                 ),
                 MB_OK | MB_ICONWARNING,
             );
@@ -1360,10 +1362,9 @@ fn on_update_checked(main: HWND, check: batteryhub::update::Check) {
             post_from_thread(main, WM_UPDATE_DOWNLOADED, move || batteryhub::update::download(&r));
         }
         Check::Available(r) => {
-            let text = format!(
-                "A new update is available:\n\n        {}  ->  {}\n\nDo you want to update now?\n\nThe setup is downloaded from GitHub, checked against the release's SHA-256 checksum and started; it keeps your settings and autostart.",
-                version_label(),
-                label_of(&r.version)
+            let text = trf(
+                "A new update is available:\n\n        {0}  ->  {1}\n\nDo you want to update now?\n\nThe setup is downloaded from GitHub, checked against the release's SHA-256 checksum and started; it keeps your settings and autostart.",
+                &[&version_label(), &label_of(&r.version)],
             );
             if message(main, &text, MB_YESNO | MB_ICONQUESTION) == IDYES {
                 post_from_thread(main, WM_UPDATE_DOWNLOADED, move || batteryhub::update::download(&r));
@@ -1392,13 +1393,13 @@ fn on_update_downloaded(main: HWND, result: Result<std::path::PathBuf, String>) 
             if let Err(e) = std::process::Command::new(&setup).arg("/update").spawn() {
                 message(
                     main,
-                    &format!("Could not start the setup:\n{e}\n\n{}", setup.display()),
+                    &trf("Could not start the setup:\n{0}\n\n{1}", &[&e, &setup.display()]),
                     MB_OK | MB_ICONWARNING,
                 );
             }
         }
         Err(e) => {
-            message(main, &format!("The update could not be downloaded:\n{e}"), MB_OK | MB_ICONWARNING);
+            message(main, &trf("The update could not be downloaded:\n{0}", &[&e]), MB_OK | MB_ICONWARNING);
         }
     }
 }
@@ -1545,11 +1546,11 @@ fn monitor_id(bar: HWND) -> String {
 
 /// "Display 2 (left)": the number Windows gives the display and where it is next to the main one.
 fn monitor_label(bar: HWND) -> String {
-    let Some(mi) = monitor_info(bar) else { return "Other monitor".into() };
+    let Some(mi) = monitor_info(bar) else { return tr("Other monitor").into() };
     let device = batteryhub::util::from_wide(&mi.szDevice);
     let mut label = match device.find("DISPLAY") {
-        Some(i) => format!("Display {}", &device[i + 7..]),
-        None => "Other monitor".into(),
+        Some(i) => trf("Display {0}", &[&&device[i + 7..]]),
+        None => tr("Other monitor").into(),
     };
     unsafe {
         let mon = MonitorFromPoint(POINT { x: 0, y: 0 }, MONITOR_DEFAULTTOPRIMARY);
@@ -1565,7 +1566,7 @@ fn monitor_label(bar: HWND) -> String {
             } else {
                 "below"
             };
-            label += &format!(" ({side})");
+            label += &format!(" ({})", tr(side));
         }
     }
     label
@@ -1645,24 +1646,27 @@ unsafe fn show_menu() {
             if !devices.is_empty() {
                 let _ = AppendMenuW(menu, MF_SEPARATOR, 0, windows::core::PCWSTR::null());
             }
-            let _ = AppendMenuW(menu, MF_STRING, ID_REFRESH_DEVICES, w!("Refresh devices"));
-            let _ = AppendMenuW(menu, MF_STRING, ID_REFRESH_LEVELS, w!("Refresh battery levels"));
+            fn s(t: &str) -> windows::core::HSTRING {
+                windows::core::HSTRING::from(t)
+            }
+            let _ = AppendMenuW(menu, MF_STRING, ID_REFRESH_DEVICES, &s(tr("Refresh devices")));
+            let _ = AppendMenuW(menu, MF_STRING, ID_REFRESH_LEVELS, &s(tr("Refresh battery levels")));
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, windows::core::PCWSTR::null());
             // How often the battery levels are read, and whether a device change triggers a read.
             if let Ok(sub) = CreatePopupMenu() {
                 let current = refresh_minutes();
                 for (j, (m, label)) in INTERVALS.iter().enumerate() {
                     let check = if *m == current { MF_CHECKED } else { MF_UNCHECKED };
-                    let _ = AppendMenuW(sub, MF_STRING | check, ID_INTERVAL_BASE + j, &windows::core::HSTRING::from(*label));
+                    let _ = AppendMenuW(sub, MF_STRING | check, ID_INTERVAL_BASE + j, &s(tr(*label)));
                 }
-                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, w!("Refresh battery every"));
+                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, &s(tr("Refresh battery every")));
             }
             let on_change = if refresh_on_change() { MF_CHECKED } else { MF_UNCHECKED };
             let _ = AppendMenuW(
                 menu,
                 MF_STRING | on_change,
                 ID_ON_CHANGE,
-                w!("Refresh when a device connects or disconnects"),
+                &s(tr("Refresh when a device connects or disconnects")),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, windows::core::PCWSTR::null());
             let check = |on: bool| if on { MF_CHECKED } else { MF_UNCHECKED };
@@ -1672,52 +1676,52 @@ unsafe fn show_menu() {
                 menu,
                 MF_STRING | check(background),
                 ID_BACKGROUND,
-                w!("Background behind taskbar text (for translucent taskbars)"),
+                &s(tr("Background behind taskbar text (for translucent taskbars)")),
             );
             if let Ok(sub) = CreatePopupMenu() {
                 let mut checked = ID_POSITION_CUSTOM;
                 for (i, px) in POSITION_OFFSETS.iter().enumerate() {
-                    let label = if *px == 0 { "Next to the notification area".to_string() } else { format!("{px} px to the left") };
-                    let _ = AppendMenuW(sub, MF_STRING, ID_POSITION_FIRST + i, &windows::core::HSTRING::from(label));
+                    let label = if *px == 0 { tr("Next to the notification area").to_string() } else { trf("{0} px to the left", &[px]) };
+                    let _ = AppendMenuW(sub, MF_STRING, ID_POSITION_FIRST + i, &s(&label));
                     if *px == offset {
                         checked = ID_POSITION_FIRST + i;
                     }
                 }
                 if checked == ID_POSITION_CUSTOM {
                     // A value set by hand in the registry (TaskbarOffset).
-                    let label = format!("Custom ({offset} px, TaskbarOffset in the registry)");
-                    let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_POSITION_CUSTOM, &windows::core::HSTRING::from(label));
+                    let label = trf("Custom ({0} px, TaskbarOffset in the registry)", &[&offset]);
+                    let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_POSITION_CUSTOM, &s(&label));
                 }
                 let _ = CheckMenuRadioItem(sub, ID_POSITION_FIRST as u32, ID_POSITION_CUSTOM as u32, checked as u32, MF_BYCOMMAND.0);
-                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, w!("Position on the taskbar"));
+                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, &s(tr("Position on the taskbar")));
             }
             if let Ok(sub) = CreatePopupMenu() {
                 let mut checked = ID_HEIGHT_CUSTOM;
                 for (i, px) in HEIGHT_OFFSETS.iter().enumerate() {
                     let label = match *px {
-                        0 => "Centred".to_string(),
-                        p if p < 0 => format!("{} px up", -p),
-                        p => format!("{p} px down"),
+                        0 => tr("Centred").to_string(),
+                        p if p < 0 => trf("{0} px up", &[&-p]),
+                        p => trf("{0} px down", &[&p]),
                     };
-                    let _ = AppendMenuW(sub, MF_STRING, ID_HEIGHT_FIRST + i, &windows::core::HSTRING::from(label));
+                    let _ = AppendMenuW(sub, MF_STRING, ID_HEIGHT_FIRST + i, &s(&label));
                     if *px == offset_y {
                         checked = ID_HEIGHT_FIRST + i;
                     }
                 }
                 if checked == ID_HEIGHT_CUSTOM {
-                    let label = format!("Custom ({offset_y} px, TaskbarOffsetY in the registry)");
-                    let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_HEIGHT_CUSTOM, &windows::core::HSTRING::from(label));
+                    let label = trf("Custom ({0} px, TaskbarOffsetY in the registry)", &[&offset_y]);
+                    let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_HEIGHT_CUSTOM, &s(&label));
                 }
                 let _ = CheckMenuRadioItem(sub, ID_HEIGHT_FIRST as u32, ID_HEIGHT_CUSTOM as u32, checked as u32, MF_BYCOMMAND.0);
-                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, w!("Height on the taskbar"));
+                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, &s(tr("Height on the taskbar")));
             }
             // With more than one monitor: all of them, the main one only, or one other monitor only.
             let others: Vec<(String, String)> =
                 secondary_taskbars().into_iter().take(ID_MONITOR_GONE - ID_MONITOR_FIRST).map(|b| (monitor_id(b), monitor_label(b))).collect();
             if !others.is_empty() {
                 if let Ok(sub) = CreatePopupMenu() {
-                    let _ = AppendMenuW(sub, MF_STRING, ID_MONITOR_ALL, w!("All monitors"));
-                    let _ = AppendMenuW(sub, MF_STRING, ID_MONITOR_MAIN, w!("Main monitor only"));
+                    let _ = AppendMenuW(sub, MF_STRING, ID_MONITOR_ALL, &s(tr("All monitors")));
+                    let _ = AppendMenuW(sub, MF_STRING, ID_MONITOR_MAIN, &s(tr("Main monitor only")));
                     let ids: Vec<String> = others.iter().map(|o| o.0.clone()).collect();
                     let checked = match choice.as_str() {
                         "all" => ID_MONITOR_ALL,
@@ -1725,35 +1729,47 @@ unsafe fn show_menu() {
                         id => find_monitor(&ids, id).map(|i| ID_MONITOR_FIRST + i).unwrap_or(ID_MONITOR_GONE),
                     };
                     for (i, (_, label)) in others.iter().enumerate() {
-                        let _ = AppendMenuW(sub, MF_STRING, ID_MONITOR_FIRST + i, &windows::core::HSTRING::from(format!("{label} only")));
+                        let _ = AppendMenuW(sub, MF_STRING, ID_MONITOR_FIRST + i, &s(&trf("{0} only", &[label])));
                     }
                     if checked == ID_MONITOR_GONE {
-                        let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_MONITOR_GONE, w!("Chosen monitor (not connected, shown on main)"));
+                        let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, ID_MONITOR_GONE, &s(tr("Chosen monitor (not connected, shown on main)")));
                     }
                     let _ = CheckMenuRadioItem(sub, ID_MONITOR_ALL as u32, ID_MONITOR_GONE as u32, checked as u32, MF_BYCOMMAND.0);
-                    let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, w!("Show widget on"));
+                    let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, &s(tr("Show widget on")));
                 }
             }
+            // Interface language: English / Lietuvių (each named in its own language).
+            if let Ok(sub) = CreatePopupMenu() {
+                let current = i18n::current();
+                for (i, l) in i18n::Lang::ALL.iter().enumerate() {
+                    let _ = AppendMenuW(sub, MF_STRING, ID_LANG_FIRST + i, &s(l.native_name()));
+                    if *l == current {
+                        let id = (ID_LANG_FIRST + i) as u32;
+                        let _ = CheckMenuRadioItem(sub, id, id, id, MF_BYCOMMAND.0);
+                    }
+                }
+                let _ = AppendMenuW(menu, MF_STRING | MF_POPUP, sub.0 as usize, &s(tr("Language")));
+            }
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, windows::core::PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING | check(ui::autostart_enabled(autostart_name())), ID_AUTOSTART, w!("Automatically start with Windows"));
-            let _ = AppendMenuW(menu, MF_STRING | check(auto_update()), ID_AUTO_UPDATE, w!("Automatically check for updates"));
+            let _ = AppendMenuW(menu, MF_STRING | check(ui::autostart_enabled(autostart_name())), ID_AUTOSTART, &s(tr("Automatically start with Windows")));
+            let _ = AppendMenuW(menu, MF_STRING | check(auto_update()), ID_AUTO_UPDATE, &s(tr("Automatically check for updates")));
             let _ = AppendMenuW(
                 menu,
                 MF_STRING | check(silent_install()) | if auto_update() { MF_ENABLED } else { MF_GRAYED },
                 ID_SILENT_UPDATE,
-                w!("Install updates silently"),
+                &s(tr("Install updates silently")),
             );
             let _ = AppendMenuW(menu, MF_SEPARATOR, 0, windows::core::PCWSTR::null());
-            let _ = AppendMenuW(menu, MF_STRING, ID_REQUEST, w!("Request support for a device..."));
+            let _ = AppendMenuW(menu, MF_STRING, ID_REQUEST, &s(tr("Request support for a device...")));
             let busy = UPDATE_BUSY.load(std::sync::atomic::Ordering::Relaxed);
             let label = if busy { "Checking for updates..." } else { "Check for updates..." };
             let _ = AppendMenuW(
                 menu,
                 MF_STRING | if busy { MF_GRAYED } else { MF_ENABLED },
                 ID_CHECK_UPDATES,
-                &windows::core::HSTRING::from(label),
+                &s(tr(label)),
             );
-            let _ = AppendMenuW(menu, MF_STRING, ID_EXIT, w!("Exit"));
+            let _ = AppendMenuW(menu, MF_STRING, ID_EXIT, &s(tr("Exit")));
             let mut pt = POINT::default();
             let _ = GetCursorPos(&mut pt);
             // Menu colours follow the taskbar: dark on a dark taskbar, light on a light one.
@@ -1841,7 +1857,7 @@ unsafe fn show_menu() {
                     if on {
                         message(
                             main,
-                            "Automatic update check is on.\n\nBatteryHub looks for a new version only when it starts (at sign-in or when you start it), not while it runs. When there is one, it asks you whether to update (or, with \"Install updates silently\", installs it in the background).",
+                            tr("Automatic update check is on.\n\nBatteryHub looks for a new version only when it starts (at sign-in or when you start it), not while it runs. When there is one, it asks you whether to update (or, with \"Install updates silently\", installs it in the background)."),
                             MB_OK | MB_ICONINFORMATION,
                         );
                     }
@@ -1852,12 +1868,18 @@ unsafe fn show_menu() {
                     if on {
                         message(
                             main,
-                            "Silent updates are on.\n\nWhen BatteryHub starts and finds a new version, it downloads it from GitHub, checks its SHA-256 checksum and installs it in the background, without asking and without showing anything. Your settings and autostart are kept.",
+                            tr("Silent updates are on.\n\nWhen BatteryHub starts and finds a new version, it downloads it from GitHub, checks its SHA-256 checksum and installs it in the background, without asking and without showing anything. Your settings and autostart are kept."),
                             MB_OK | MB_ICONINFORMATION,
                         );
                     }
                 }
                 ID_REQUEST => batteryhub::report_window::show(),
+                id if (ID_LANG_FIRST..ID_LANG_FIRST + i18n::Lang::ALL.len()).contains(&id) => {
+                    // The menu and messages are built each time, so the new language shows at once;
+                    // the tooltip text is refreshed with the next paint.
+                    i18n::choose(i18n::Lang::ALL[id - ID_LANG_FIRST]);
+                    with_app(|a| a.paint());
+                }
                 ID_ON_CHANGE => {
                     let on = !refresh_on_change();
                     save_dword("RefreshOnDeviceChange", on as u32);
@@ -1927,10 +1949,9 @@ extern "system" fn main_proc(hwnd: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LR
                     TIMER_UPDATED => {
                         let _ = KillTimer(Some(hwnd), TIMER_UPDATED);
                         if let Some(old) = a.updated_from.take() {
-                            let text = format!(
-                                "Update finished.\n\nBatteryHub was updated:  {}  ->  {}\n\nYour settings and autostart were kept.",
-                                batteryhub::install::label_of(&old),
-                                batteryhub::install::version_label()
+                            let text = trf(
+                                "Update finished.\n\nBatteryHub was updated:  {0}  ->  {1}\n\nYour settings and autostart were kept.",
+                                &[&batteryhub::install::label_of(&old), &batteryhub::install::version_label()],
                             );
                             post_from_thread(hwnd, WM_SHOW_UPDATED, move || text);
                         }

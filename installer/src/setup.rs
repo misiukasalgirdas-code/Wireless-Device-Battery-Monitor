@@ -8,6 +8,7 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
+use batteryhub::i18n::{tr, trf};
 use batteryhub::install::{self as inst, Edition, Log, HKCU, HKLM};
 use batteryhub::{device, hid};
 
@@ -67,19 +68,17 @@ fn fmt_time(t: SystemTime) -> String {
 
 fn file_line(p: &Path) -> String {
     match std::fs::metadata(p) {
-        Ok(m) => format!(
-            "{}  ({}, modified {})",
-            p.display(),
-            inst::fmt_bytes(m.len()),
-            m.modified().map(fmt_time).unwrap_or_default()
+        Ok(m) => trf(
+            "{0}  ({1}, modified {2})",
+            &[&p.display(), &inst::fmt_bytes(m.len()), &m.modified().map(fmt_time).unwrap_or_default()],
         ),
-        Err(_) => format!("{}  (missing)", p.display()),
+        Err(_) => trf("{0}  (missing)", &[&p.display()]),
     }
 }
 
 fn choose(log: &Log, valid: &[char]) -> char {
     loop {
-        print!("\n  Choose an option [{}]: ", valid.iter().map(|c| c.to_string()).collect::<Vec<_>>().join("/"));
+        print!("{}", trf("\n  Choose an option [{0}]: ", &[&valid.iter().map(|c| c.to_string()).collect::<Vec<_>>().join("/")]));
         let _ = std::io::stdout().flush();
         let mut s = String::new();
         // Error or end of input (closed console / empty pipe): treat as Exit instead of looping.
@@ -91,7 +90,7 @@ fn choose(log: &Log, valid: &[char]) -> char {
                 return c;
             }
         }
-        log.warn("Please type one of the numbers shown.");
+        log.warn(tr("Please type one of the numbers shown."));
     }
 }
 
@@ -138,47 +137,52 @@ fn read_state(ed: &Edition) -> State {
 /// Autostart line: where the entry is in the registry (not the program path it starts).
 fn autostart_line(ed: &Edition, st: &State) -> String {
     match (ed.run_value, &st.autostart) {
-        (Some(v), Some(_)) => format!("on (HKCU\\{}\\{v})", inst::RUN_KEY),
-        _ => "off".into(),
+        (Some(v), Some(_)) => trf("on (HKCU\\{0})", &[&format!("{}\\{v}", inst::RUN_KEY)]),
+        _ => tr("off").into(),
     }
 }
 
 fn yes_no(b: bool) -> &'static str {
-    if b { "yes" } else { "no" }
+    tr(if b { "yes" } else { "no" })
+}
+
+/// Summary line: a label (padded to 22 columns) and its value.
+fn row(label: &'static str, value: impl std::fmt::Display) {
+    println!("  {:<22} {value}", tr(label));
 }
 
 /// Scans the PC (with a detailed log) and prints a summary. Returns this edition's state.
 fn scan(ed: &Edition, log: &Log) -> State {
-    log.step("Scanning this PC for existing BatteryHub installations");
-    log.info(format!("Reading HKCU\\{}", ed.settings_key));
+    log.step(tr("Scanning this PC for existing BatteryHub installations"));
+    log.info(trf("Reading HKCU\\{0}", &[&ed.settings_key]));
     match inst::open(HKCU, ed.settings_key, false) {
         Some(k) => {
             for (n, _, d) in k.values() {
                 log.detail(format!("{n:<16} = {d}"));
             }
         }
-        None => log.detail("(not present)"),
+        None => log.detail(tr("(not present)")),
     }
     let st = read_state(ed);
-    log.info(format!("Checking install folder {}", st.dir.display()));
+    log.info(trf("Checking install folder {0}", &[&st.dir.display()]));
     match std::fs::read_dir(&st.dir) {
         Ok(entries) => {
             for e in entries.flatten() {
                 log.detail(file_line(&e.path()));
             }
         }
-        Err(_) => log.detail("(folder does not exist)"),
+        Err(_) => log.detail(tr("(folder does not exist)")),
     }
-    log.info(format!("Checking desktop shortcut {}", ed.desktop_shortcut().display()));
-    log.detail(if st.desktop { "found" } else { "not found" });
-    log.info(format!("Checking Start menu shortcut {}", ed.start_menu_shortcut().display()));
-    log.detail(if st.start_menu { "found" } else { "not found" });
+    log.info(trf("Checking desktop shortcut {0}", &[&ed.desktop_shortcut().display()]));
+    log.detail(tr(if st.desktop { "found" } else { "not found" }));
+    log.info(trf("Checking Start menu shortcut {0}", &[&ed.start_menu_shortcut().display()]));
+    log.detail(tr(if st.start_menu { "found" } else { "not found" }));
     if let Some(v) = ed.run_value {
-        log.info(format!("Checking autostart HKCU\\{}\\{v}", inst::RUN_KEY));
-        log.detail(st.autostart.as_deref().unwrap_or("not set"));
+        log.info(trf("Checking autostart HKCU\\{0}", &[&format!("{}\\{v}", inst::RUN_KEY)]));
+        log.detail(st.autostart.as_deref().unwrap_or(tr("not set")));
     }
-    log.info(format!("Checking whether {} is running", ed.name));
-    log.detail(if st.running { "running" } else { "not running" });
+    log.info(trf("Checking whether {0} is running", &[&ed.name]));
+    log.detail(tr(if st.running { "running" } else { "not running" }));
 
     // The original C++ app: reported, never touched.
     let pf = std::env::var("ProgramFiles").unwrap_or_else(|_| r"C:\Program Files".into());
@@ -186,33 +190,32 @@ fn scan(ed: &Edition, log: &Log) -> State {
         PathBuf::from(&pf).join(r"BatteryHub\BatteryHub.exe"),
         PathBuf::from(std::env::var("LOCALAPPDATA").unwrap_or_default()).join(r"Programs\BatteryHub\BatteryHub.exe"),
     ];
-    log.info("Checking for the original BatteryHub (C++)");
+    log.info(tr("Checking for the original BatteryHub (C++)"));
     let orig = original.iter().find(|p| p.exists());
-    log.detail(orig.map(|p| format!("found: {}", p.display())).unwrap_or_else(|| "not found".into()));
+    log.detail(orig.map(|p| trf("found: {0}", &[&p.display()])).unwrap_or_else(|| tr("not found").into()));
 
     // Summary.
     println!();
-    log.banner("CURRENT STATE");
+    log.banner(tr("CURRENT STATE"));
     let status = match (&st.installed, &st.version) {
-        (true, Some(v)) => format!("INSTALLED  v{v}"),
-        (true, None) => "INSTALLED  (unknown version)".into(),
-        (false, _) => "NOT INSTALLED".into(),
+        (true, Some(v)) => trf("INSTALLED  v{0}", &[v]),
+        (true, None) => tr("INSTALLED  (unknown version)").into(),
+        (false, _) => tr("NOT INSTALLED").into(),
     };
     println!("  {:<22} {status}", ed.name);
-    println!("  {:<22} v{}", "This setup contains", inst::VERSION);
-    println!("  {:<22} {}", "Install folder", st.dir.display());
-    println!("  {:<22} {}", "Program file", if st.exe_exists { file_line(&st.exe) } else { "(not present)".into() });
-    println!("  {:<22} {}", "Desktop shortcut", if st.desktop { ed.desktop_shortcut().display().to_string() } else { "(none)".into() });
-    println!("  {:<22} {}", "Start menu shortcut", if st.start_menu { ed.start_menu_shortcut().display().to_string() } else { "(none)".into() });
-    println!("  {:<22} HKCU\\{}", "Settings", ed.settings_key);
+    row("This setup contains", format!("v{}", inst::VERSION));
+    row("Install folder", st.dir.display());
+    row("Program file", if st.exe_exists { file_line(&st.exe) } else { tr("(not present)").into() });
+    row("Desktop shortcut", if st.desktop { ed.desktop_shortcut().display().to_string() } else { tr("(none)").into() });
+    row("Start menu shortcut", if st.start_menu { ed.start_menu_shortcut().display().to_string() } else { tr("(none)").into() });
+    row("Settings", format!("HKCU\\{}", ed.settings_key));
     if ed.run_value.is_some() {
-        println!("  {:<22} {}", "Autostart", autostart_line(ed, &st));
+        row("Autostart", autostart_line(ed, &st));
     }
-    println!("  {:<22} {}", "Running now", yes_no(st.running));
-    println!(
-        "  {:<22} {}",
+    row("Running now", yes_no(st.running));
+    row(
         "Original BatteryHub",
-        orig.map(|p| format!("{} (separate - not affected)", p.display())).unwrap_or_else(|| "not installed".into())
+        orig.map(|p| trf("{0} (separate - not affected)", &[&p.display()])).unwrap_or_else(|| tr("not installed").into()),
     );
     st
 }
@@ -220,7 +223,7 @@ fn scan(ed: &Edition, log: &Log) -> State {
 // ---- actions -----------------------------------------------------------------------------------
 
 fn extract(log: &Log, path: &Path, data: &[u8]) -> bool {
-    log.info(format!("Writing {} ({})", path.display(), inst::fmt_bytes(data.len() as u64)));
+    log.info(trf("Writing {0} ({1})", &[&path.display(), &inst::fmt_bytes(data.len() as u64)]));
     log.detail(format!("source CRC-32 0x{:08X}", inst::crc32(data)));
     let mut file = None;
     for attempt in 1..=20 {
@@ -230,19 +233,19 @@ fn extract(log: &Log, path: &Path, data: &[u8]) -> bool {
                 break;
             }
             Err(e) => {
-                log.warn(format!("file is in use ({e}), retrying ({attempt}/20)..."));
+                log.warn(trf("file is in use ({0}), retrying ({1}/20)...", &[&e, &attempt]));
                 std::thread::sleep(std::time::Duration::from_millis(250));
             }
         }
     }
     let Some(mut f) = file else {
-        log.error(format!("Cannot write {}", path.display()));
+        log.error(trf("Cannot write {0}", &[&path.display()]));
         return false;
     };
     const CHUNK: usize = 32 * 1024;
     for (i, chunk) in data.chunks(CHUNK).enumerate() {
         if let Err(e) = f.write_all(chunk) {
-            log.error(format!("Write error: {e}"));
+            log.error(trf("Write error: {0}", &[&e]));
             return false;
         }
         let done = (i * CHUNK + chunk.len()) as u64;
@@ -258,16 +261,16 @@ fn extract(log: &Log, path: &Path, data: &[u8]) -> bool {
     let written = std::fs::read(path).unwrap_or_default();
     let crc = inst::crc32(&written);
     if written.len() == data.len() && crc == inst::crc32(data) {
-        log.ok(format!("Verified (CRC-32 0x{crc:08X})"));
+        log.ok(trf("Verified (CRC-32 0x{0})", &[&format!("{crc:08X}")]));
         true
     } else {
-        log.error(format!("Verification failed (CRC-32 0x{crc:08X})"));
+        log.error(trf("Verification failed (CRC-32 0x{0})", &[&format!("{crc:08X}")]));
         false
     }
 }
 
 fn save_info(ed: &Edition, log: &Log, dir: &Path, created: &mut Vec<String>) {
-    log.info(format!("Saving install information to HKCU\\{}", ed.settings_key));
+    log.info(trf("Saving install information to HKCU\\{0}", &[&ed.settings_key]));
     match inst::create(HKCU, ed.settings_key) {
         Some(k) => {
             for (n, v) in [
@@ -281,7 +284,7 @@ fn save_info(ed: &Edition, log: &Log, dir: &Path, created: &mut Vec<String>) {
             }
             created.push(format!("registry  HKCU\\{}", ed.settings_key));
         }
-        None => log.warn("Could not save install information."),
+        None => log.warn(tr("Could not save install information.")),
     }
 }
 
@@ -304,33 +307,33 @@ fn same_file(a: &Path, b: &Path) -> bool {
 fn register_app(ed: &Edition, log: &Log, dir: &Path, exe: &Path, created: &mut Vec<String>) {
     let setup = dir.join(SETUP_COPY);
     match std::env::current_exe() {
-        Ok(me) if same_file(&me, &setup) => log.detail(format!("running from {}", setup.display())),
+        Ok(me) if same_file(&me, &setup) => log.detail(trf("running from {0}", &[&setup.display()])),
         Ok(me) => match std::fs::copy(&me, &setup) {
             Ok(n) => {
-                log.ok(format!("Copied the setup to {} ({})", setup.display(), inst::fmt_bytes(n)));
+                log.ok(trf("Copied the setup to {0} ({1})", &[&setup.display(), &inst::fmt_bytes(n)]));
                 created.push(format!("setup     {}", setup.display()));
             }
             Err(e) => {
-                log.warn(format!("Could not copy the setup to {}: {e} (no entry in Settings > Apps)", setup.display()));
+                log.warn(trf("Could not copy the setup to {0}: {1} (no entry in Settings > Apps)", &[&setup.display(), &e]));
                 return;
             }
         },
         Err(e) => {
-            log.warn(format!("Cannot find this setup's own file: {e} (no entry in Settings > Apps)"));
+            log.warn(trf("Cannot find this setup's own file: {0} (no entry in Settings > Apps)", &[&e]));
             return;
         }
     }
     let key = apps_key(ed);
-    log.info(format!("Registering in Settings > Apps: HKCU\\{key}"));
+    log.info(trf("Registering in Settings > Apps: HKCU\\{0}", &[&key]));
     let Some(k) = inst::create(HKCU, &key) else {
-        log.warn("Could not create the Settings > Apps entry.");
+        log.warn(tr("Could not create the Settings > Apps entry."));
         return;
     };
     let quoted = format!("\"{}\"", setup.display());
     for (n, v) in [
         ("DisplayName", ed.name.to_string()),
         ("DisplayVersion", inst::VERSION.to_string()),
-        ("Publisher", "ferloom".to_string()),
+        ("Publisher", "misiukasalgirdas-code".to_string()),
         ("DisplayIcon", format!("{},0", exe.display())),
         ("InstallLocation", dir.display().to_string()),
         ("UninstallString", format!("{quoted} /uninstall")),
@@ -356,7 +359,7 @@ fn register_app(ed: &Edition, log: &Log, dir: &Path, exe: &Path, created: &mut V
 fn unregister_app(ed: &Edition, log: &Log, dir: &Path, removed: &mut Vec<String>) {
     let key = apps_key(ed);
     if inst::open(HKCU, &key, false).is_some() && inst::delete_tree(HKCU, &key) {
-        log.ok(format!("Deleted HKCU\\{key}"));
+        log.ok(trf("Deleted HKCU\\{0}", &[&key]));
         removed.push(format!("registry  HKCU\\{key}"));
     }
     let setup = dir.join(SETUP_COPY);
@@ -375,10 +378,10 @@ fn unregister_app(ed: &Edition, log: &Log, dir: &Path, removed: &mut Vec<String>
         // CREATE_NO_WINDOW | DETACHED_PROCESS
         match std::process::Command::new("cmd").arg("/c").raw_arg(&cmd).creation_flags(0x0800_0000 | 0x0000_0008).spawn() {
             Ok(_) => {
-                log.ok(format!("{} will be deleted a few seconds after this window closes", setup.display()));
+                log.ok(trf("{0} will be deleted a few seconds after this window closes", &[&setup.display()]));
                 removed.push(format!("setup     {}", setup.display()));
             }
-            Err(e) => log.warn(format!("Could not schedule deleting {}: {e}", setup.display())),
+            Err(e) => log.warn(trf("Could not schedule deleting {0}: {1}", &[&setup.display(), &e])),
         }
     } else {
         remove_file(log, &setup, removed, "setup    ");
@@ -389,16 +392,16 @@ fn make_shortcuts(ed: &Edition, log: &Log, exe: &Path, created: &mut Vec<String>
     let start_dir = Edition::start_menu_folder();
     if !start_dir.exists() {
         let _ = std::fs::create_dir_all(&start_dir);
-        log.detail(format!("created folder {}", start_dir.display()));
+        log.detail(trf("created folder {0}", &[&start_dir.display()]));
     }
     for (what, lnk) in [("Desktop", ed.desktop_shortcut()), ("Start menu", ed.start_menu_shortcut())] {
-        log.info(format!("Creating {what} shortcut"));
+        log.info(trf("Creating {0} shortcut", &[&tr(what)]));
         match inst::create_shortcut(&lnk, exe, ed.description) {
             Ok(_) => {
                 log.ok(format!("{} -> {}", lnk.display(), exe.display()));
                 created.push(format!("shortcut  {}", lnk.display()));
             }
-            Err(e) => log.warn(format!("Could not create {}: {e}", lnk.display())),
+            Err(e) => log.warn(trf("Could not create {0}: {1}", &[&lnk.display(), &e])),
         }
     }
 }
@@ -406,50 +409,50 @@ fn make_shortcuts(ed: &Edition, log: &Log, exe: &Path, created: &mut Vec<String>
 fn set_autostart(ed: &Edition, log: &Log, exe: &Path, on: bool, created: &mut Vec<String>) {
     let Some(name) = ed.run_value else { return };
     let Some(run) = inst::open(HKCU, inst::RUN_KEY, true).or_else(|| inst::create(HKCU, inst::RUN_KEY)) else {
-        log.error("Cannot open the autostart registry key.");
+        log.error(tr("Cannot open the autostart registry key."));
         return;
     };
     if on {
         let cmd = format!("\"{}\"", exe.display());
         if run.set_string(name, &cmd) {
-            log.ok(format!("Autostart on: HKCU\\{}\\{name} = {cmd}", inst::RUN_KEY));
+            log.ok(trf("Autostart on: HKCU\\{0} = {1}", &[&format!("{}\\{name}", inst::RUN_KEY), &cmd]));
             created.push(format!("autostart HKCU\\{}\\{name}", inst::RUN_KEY));
         }
         // A "disabled" state left in Task Manager would keep it from starting.
         if let Some(sa) = inst::open(HKCU, inst::STARTUP_APPROVED_KEY, true) {
             if sa.delete_value(name) {
-                log.detail("cleared an old Task Manager 'disabled' state");
+                log.detail(tr("cleared an old Task Manager 'disabled' state"));
             }
         }
     } else if run.delete_value(name) {
-        log.ok("Autostart off: removed the existing autostart entry.");
+        log.ok(tr("Autostart off: removed the existing autostart entry."));
     } else {
-        log.ok("Autostart off.");
+        log.ok(tr("Autostart off."));
     }
 }
 
 fn device_scan(log: &Log) {
-    log.step("Scanning for supported wireless devices (this can take a few seconds)");
+    log.step(tr("Scanning for supported wireless devices (this can take a few seconds)"));
     let colls = hid::enum_hid();
     let mut ids: Vec<(u16, u16)> = colls.iter().map(|c| (c.vid, c.pid)).collect();
     ids.sort();
     ids.dedup();
-    log.detail(format!("{} HID collections on {} USB / Bluetooth devices", colls.len(), ids.len()));
+    log.detail(trf("{0} HID collections on {1} USB / Bluetooth devices", &[&colls.len(), &ids.len()]));
     for (v, p) in &ids {
         let name = colls
             .iter()
             .find(|c| c.vid == *v && c.pid == *p)
             .map(hid::product_string)
             .filter(|s| !s.is_empty())
-            .unwrap_or_else(|| "(no product name)".into());
+            .unwrap_or_else(|| tr("(no product name)").into());
         log.detail(format!("HID {v:04X}:{p:04X}  {name}"));
     }
     let devices = device::poll_all_devices();
     if devices.is_empty() {
-        log.warn("No supported device with a battery is connected right now. BatteryHub will pick them up later.");
+        log.warn(tr("No supported device with a battery is connected right now. BatteryHub will pick them up later."));
     }
     for d in &devices {
-        log.ok(format!("{:<10} {:<38} {:<12} via {}", d.kind.label(), d.name, d.status_text(), d.via));
+        log.ok(format!("{:<10} {:<38} {:<12} {} {}", d.kind.label(), d.name, d.status_text(), tr("via"), d.via));
     }
 }
 
@@ -462,8 +465,8 @@ fn launch(ed: &Edition, log: &Log, exe: &Path) {
         .stderr(Stdio::null())
         .spawn()
     {
-        Ok(c) => log.ok(format!("{} started (process id {}).", ed.name, c.id())),
-        Err(e) => log.error(format!("Could not start {}: {e}", ed.name)),
+        Ok(c) => log.ok(trf("{0} started (process id {1}).", &[&ed.name, &c.id()])),
+        Err(e) => log.error(trf("Could not start {0}: {1}", &[&ed.name, &e])),
     }
 }
 
@@ -471,7 +474,7 @@ fn print_list(log: &Log, title: &str, items: &[String]) {
     println!();
     log.banner(title);
     if items.is_empty() {
-        println!("  (nothing)");
+        println!("{}", tr("  (nothing)"));
     }
     for i in items {
         println!("  {i}");
@@ -480,63 +483,67 @@ fn print_list(log: &Log, title: &str, items: &[String]) {
 
 fn install(ed: &Edition, payload: &[u8], log: &Log, o: &Opts, st: &State, update: bool) -> bool {
     let mut created = Vec::new();
-    let what = if update { "Updating" } else { "Installing" };
-    log.step(format!("[1/6] {what} {} v{} - stopping a running copy", ed.name, inst::VERSION));
+    let step1 = if update {
+        "[1/6] Updating {0} v{1} - stopping a running copy"
+    } else {
+        "[1/6] Installing {0} v{1} - stopping a running copy"
+    };
+    log.step(trf(step1, &[&ed.name, &inst::VERSION]));
     let was_running = inst::stop_running(ed, log);
 
-    log.step("[2/6] Preparing the install folder");
+    log.step(tr("[2/6] Preparing the install folder"));
     let dir = if update { st.dir.clone() } else { ed.default_dir() };
     if dir.exists() {
-        log.detail(format!("{} already exists", dir.display()));
+        log.detail(trf("{0} already exists", &[&dir.display()]));
     } else if let Err(e) = std::fs::create_dir_all(&dir) {
-        log.error(format!("Cannot create {}: {e}", dir.display()));
+        log.error(trf("Cannot create {0}: {1}", &[&dir.display(), &e]));
         return false;
     } else {
-        log.ok(format!("Created {}", dir.display()));
+        log.ok(trf("Created {0}", &[&dir.display()]));
     }
 
-    log.step("[3/6] Installing the program file");
+    log.step(tr("[3/6] Installing the program file"));
     let exe = dir.join(ed.exe);
     if update {
-        log.detail(format!("old: {}", file_line(&exe)));
+        log.detail(trf("old: {0}", &[&file_line(&exe)]));
     }
     if !extract(log, &exe, payload) {
         return false;
     }
     created.push(format!("program   {}", exe.display()));
 
-    log.step("[4/6] Saving install information");
+    log.step(tr("[4/6] Saving install information"));
     save_info(ed, log, &dir, &mut created);
     register_app(ed, log, &dir, &exe, &mut created);
 
-    log.step("[5/6] Creating shortcuts (desktop and Start menu)");
+    log.step(tr("[5/6] Creating shortcuts (desktop and Start menu)"));
     make_shortcuts(ed, log, &exe, &mut created);
 
-    log.step("[6/6] Autostart");
+    log.step(tr("[6/6] Autostart"));
     if ed.run_value.is_none() {
-        log.info(format!("{} does not run in the background - no autostart needed.", ed.name));
+        log.info(trf("{0} does not run in the background - no autostart needed.", &[&ed.name]));
     } else if update {
         match &st.autostart {
             Some(_) => {
-                log.info("Autostart was on - keeping it (path refreshed).");
+                log.info(tr("Autostart was on - keeping it (path refreshed)."));
                 set_autostart(ed, log, &exe, true, &mut created);
             }
-            None => log.info("Autostart was off - keeping it off."),
+            None => log.info(tr("Autostart was off - keeping it off.")),
         }
     } else {
         let on = match o.autostart {
             Some(v) => v,
             None if o.silent => true,
-            None => log.ask(&format!("Add {} to Windows autostart (start automatically when you sign in)?", ed.name), true),
+            None => log.ask(&trf("Add {0} to Windows autostart (start automatically when you sign in)?", &[&ed.name]), true),
         };
         set_autostart(ed, log, &exe, on, &mut created);
     }
 
     device_scan(log);
-    print_list(log, if update { "FILES UPDATED / CREATED" } else { "FILES CREATED" }, &created);
+    print_list(log, tr(if update { "FILES UPDATED / CREATED" } else { "FILES CREATED" }), &created);
 
     println!();
-    let start = o.launch && (was_running || o.silent || log.ask(&format!("Start {} now?", ed.name), true));
+    let start = o.launch && (was_running || o.silent || log.ask(&trf("Start {0} now?", &[&ed.name]), true));
     if start {
         // The updated program says "Update finished: vOLD -> vNEW" once when it starts.
         if update && o.notify && ed.run_value.is_some() {
@@ -546,7 +553,7 @@ fn install(ed: &Edition, payload: &[u8], log: &Log, o: &Opts, st: &State, update
         }
         launch(ed, log, &exe);
         if ed.run_value.is_some() {
-            log.info("Look at the taskbar, next to the clock. Right-click it for Refresh / Exit.");
+            log.info(tr("Look at the taskbar, next to the clock. Right-click it for Refresh / Exit."));
         }
     }
     true
@@ -561,12 +568,12 @@ fn starts_edition(ed: &Edition, dir: &Path, name: &str, command: &str) -> bool {
 }
 
 fn scan_autostart(ed: &Edition, log: &Log, dir: &Path, removed: &mut Vec<String>) {
-    log.info(format!("Looking for autostart entries that start {}", ed.exe));
+    log.info(trf("Looking for autostart entries that start {0}", &[&ed.exe]));
     for (hive, path) in [(HKCU, inst::RUN_KEY), (HKCU, inst::RUN_ONCE_KEY), (HKLM, inst::RUN_KEY)] {
         let where_ = format!("{}\\{path}", inst::hive_name(hive));
-        log.info(format!("Scanning {where_}"));
+        log.info(trf("Scanning {0}", &[&where_]));
         let Some(key) = inst::open(hive, path, false) else {
-            log.detail("(key does not exist)");
+            log.detail(tr("(key does not exist)"));
             continue;
         };
         for (name, _, data) in key.values() {
@@ -574,29 +581,29 @@ fn scan_autostart(ed: &Edition, log: &Log, dir: &Path, removed: &mut Vec<String>
                 log.detail(format!("skip   {name:<28} -> {data}"));
                 continue;
             }
-            log.warn(format!("Found: \"{name}\" -> {data}"));
+            log.warn(trf("Found: \"{0}\" -> {1}", &[&name, &data]));
             match inst::open(hive, path, true) {
                 Some(w) if w.delete_value(&name) => {
-                    log.ok(format!("Removed \"{name}\" from {where_}"));
+                    log.ok(trf("Removed \"{0}\" from {1}", &[&name, &where_]));
                     removed.push(format!("autostart {where_}\\{name}"));
                 }
-                _ if hive == HKLM => log.error(format!("Cannot remove \"{name}\" from {where_}: run setup as administrator.")),
-                _ => log.error(format!("Failed to remove \"{name}\"")),
+                _ if hive == HKLM => log.error(trf("Cannot remove \"{0}\" from {1}: run setup as administrator.", &[&name, &where_])),
+                _ => log.error(trf("Failed to remove \"{0}\"", &[&name])),
             }
         }
     }
     if let Some(v) = ed.run_value {
-        log.info(format!("Scanning HKCU\\{} (Task Manager startup state)", inst::STARTUP_APPROVED_KEY));
+        log.info(trf("Scanning HKCU\\{0} (Task Manager startup state)", &[&inst::STARTUP_APPROVED_KEY]));
         match inst::open(HKCU, inst::STARTUP_APPROVED_KEY, true) {
             Some(k) if k.delete_value(v) => {
-                log.ok(format!("Removed startup state \"{v}\""));
+                log.ok(trf("Removed startup state \"{0}\"", &[&v]));
                 removed.push(format!("autostart HKCU\\{}\\{v}", inst::STARTUP_APPROVED_KEY));
             }
-            _ => log.detail("no entry"),
+            _ => log.detail(tr("no entry")),
         }
     }
     let startup = inst::startup_dir();
-    log.info(format!("Scanning Startup folder {}", startup.display()));
+    log.info(trf("Scanning Startup folder {0}", &[&startup.display()]));
     if let Ok(entries) = std::fs::read_dir(&startup) {
         for e in entries.flatten() {
             let name = e.file_name().to_string_lossy().to_string();
@@ -606,10 +613,10 @@ fn scan_autostart(ed: &Edition, log: &Log, dir: &Path, removed: &mut Vec<String>
             if starts_edition(ed, dir, "", &text) {
                 match std::fs::remove_file(e.path()) {
                     Ok(_) => {
-                        log.ok(format!("Deleted startup shortcut {name}"));
+                        log.ok(trf("Deleted startup shortcut {0}", &[&name]));
                         removed.push(format!("shortcut  {}", e.path().display()));
                     }
-                    Err(err) => log.error(format!("Could not delete {name}: {err}")),
+                    Err(err) => log.error(trf("Could not delete {0}: {1}", &[&name, &err])),
                 }
             } else {
                 log.detail(format!("skip   {name}"));
@@ -620,19 +627,19 @@ fn scan_autostart(ed: &Edition, log: &Log, dir: &Path, removed: &mut Vec<String>
 
 fn remove_file(log: &Log, p: &Path, removed: &mut Vec<String>, label: &str) {
     if !p.exists() {
-        log.detail(format!("{} (not present)", p.display()));
+        log.detail(trf("{0} (not present)", &[&p.display()]));
         return;
     }
     let size = std::fs::metadata(p).map(|m| m.len()).unwrap_or(0);
     for _ in 0..20 {
         if std::fs::remove_file(p).is_ok() {
-            log.ok(format!("Deleted {} ({})", p.display(), inst::fmt_bytes(size)));
+            log.ok(trf("Deleted {0} ({1})", &[&p.display(), &inst::fmt_bytes(size)]));
             removed.push(format!("{label} {}", p.display()));
             return;
         }
         std::thread::sleep(std::time::Duration::from_millis(150));
     }
-    log.error(format!("Could not delete {}", p.display()));
+    log.error(trf("Could not delete {0}", &[&p.display()]));
 }
 
 fn remove_dir_if_empty(log: &Log, p: &Path, removed: &mut Vec<String>) {
@@ -641,10 +648,10 @@ fn remove_dir_if_empty(log: &Log, p: &Path, removed: &mut Vec<String>) {
     }
     match std::fs::remove_dir(p) {
         Ok(_) => {
-            log.ok(format!("Removed empty folder {}", p.display()));
+            log.ok(trf("Removed empty folder {0}", &[&p.display()]));
             removed.push(format!("folder    {}", p.display()));
         }
-        Err(_) => log.detail(format!("kept folder (not empty): {}", p.display())),
+        Err(_) => log.detail(trf("kept folder (not empty): {0}", &[&p.display()])),
     }
 }
 
@@ -680,74 +687,74 @@ fn remove_legacy(log: &Log, removed: &mut Vec<String>) {
         any = true;
     }
     if any {
-        log.ok("Removed leftovers of an old BatteryHub 2 test build.");
+        log.ok(tr("Removed leftovers of an old BatteryHub 2 test build."));
     } else {
-        log.detail("none found");
+        log.detail(tr("none found"));
     }
 }
 
 fn uninstall(ed: &Edition, log: &Log, st: &State) -> bool {
     let mut removed = Vec::new();
-    log.step(format!("[1/6] Uninstalling {} - stopping a running copy", ed.name));
+    log.step(trf("[1/6] Uninstalling {0} - stopping a running copy", &[&ed.name]));
     inst::stop_running(ed, log);
 
-    log.step("[2/6] Checking autostart (whether it added itself anywhere)");
+    log.step(tr("[2/6] Checking autostart (whether it added itself anywhere)"));
     scan_autostart(ed, log, &st.dir, &mut removed);
 
-    log.step("[3/6] Removing shortcuts");
+    log.step(tr("[3/6] Removing shortcuts"));
     remove_file(log, &ed.desktop_shortcut(), &mut removed, "shortcut ");
     remove_file(log, &ed.start_menu_shortcut(), &mut removed, "shortcut ");
     remove_dir_if_empty(log, &Edition::start_menu_folder(), &mut removed);
 
-    log.step("[4/6] Removing program files");
+    log.step(tr("[4/6] Removing program files"));
     remove_file(log, &st.exe, &mut removed, "program  ");
     unregister_app(ed, log, &st.dir, &mut removed);
     remove_dir_if_empty(log, &st.dir, &mut removed);
     remove_dir_if_empty(log, &Edition::root_dir(), &mut removed);
 
-    log.step("[5/6] Removing settings");
+    log.step(tr("[5/6] Removing settings"));
     if let Some(k) = inst::open(HKCU, ed.settings_key, false) {
         for (n, _, d) in k.values() {
             log.detail(format!("{n} = {d}"));
         }
         drop(k);
         if inst::delete_tree(HKCU, ed.settings_key) {
-            log.ok(format!("Deleted HKCU\\{}", ed.settings_key));
+            log.ok(trf("Deleted HKCU\\{0}", &[&ed.settings_key]));
             removed.push(format!("registry  HKCU\\{}", ed.settings_key));
         }
     } else {
-        log.detail("(no settings stored)");
+        log.detail(tr("(no settings stored)"));
     }
     if inst::delete_key_if_empty(HKCU, inst::ROOT_KEY) {
-        log.ok(format!("Deleted empty HKCU\\{}", inst::ROOT_KEY));
+        log.ok(trf("Deleted empty HKCU\\{0}", &[&inst::ROOT_KEY]));
     } else {
-        log.detail(format!("kept HKCU\\{} (not empty, or already gone)", inst::ROOT_KEY));
+        log.detail(trf("kept HKCU\\{0} (not empty, or already gone)", &[&inst::ROOT_KEY]));
     }
 
-    log.step("[6/6] Cleaning up leftovers");
+    log.step(tr("[6/6] Cleaning up leftovers"));
     if ed.run_value.is_some() {
         remove_legacy(log, &mut removed);
     } else {
-        log.detail("none");
+        log.detail(tr("none"));
     }
 
-    print_list(log, "REMOVED", &removed);
+    print_list(log, tr("REMOVED"), &removed);
     true
 }
 
 /// Thank-you note with a link to star the project, then the window closes by itself after 5 s.
 fn goodbye(log: &Log, silent: bool) {
     println!();
-    log.banner("THANK YOU");
-    println!("  Thanks for your trust in BatteryHub!");
-    println!("  If you like it, please give the project a star on GitHub - it really helps:");
+    log.banner(tr("THANK YOU"));
+    println!("{}", tr("  Thanks for your trust in BatteryHub!"));
+    println!("{}", tr("  If you like it, please give the project a star on GitHub - it really helps:"));
     println!("  https://github.com/{}", batteryhub::update::REPO);
     println!();
     if silent {
         return;
     }
     for left in (1..=5).rev() {
-        print!("\r  This window closes in {left} s...  ");
+        print!("{}", trf("\r  This window closes in {0} s...  ", &[&left]));
         let _ = std::io::stdout().flush();
         std::thread::sleep(std::time::Duration::from_secs(1));
     }
@@ -758,9 +765,9 @@ fn goodbye(log: &Log, silent: bool) {
 
 pub fn run(ed: Edition, payload: &'static [u8]) {
     let o = opts();
-    let title = format!("{} {} - Setup", ed.name, inst::version_label());
+    let title = trf("{0} {1} - Setup", &[&ed.name, &inst::version_label()]);
     let log = Log::new(&title);
-    log.banner(&format!("{title}   (per-user, no administrator rights needed)"));
+    log.banner(&trf("{0}   (per-user, no administrator rights needed)", &[&title]));
 
     let st = scan(&ed, &log);
     let installed_ver = st.version.clone().unwrap_or_else(|| "0".into());
@@ -772,14 +779,14 @@ pub fn run(ed: Edition, payload: &'static [u8]) {
         None if o.silent => Some(if can_update { Action::Update } else { Action::Install }),
         None => {
             println!();
-            log.banner("WHAT DO YOU WANT TO DO?");
+            log.banner(tr("WHAT DO YOU WANT TO DO?"));
             let label = |avail: bool, s: String| if avail { s } else { format!("\x1b[90m{s}\x1b[0m") };
             let install_txt = if same {
-                format!("[1] Reinstall   - write v{} again (repair files and shortcuts)", inst::VERSION)
+                trf("[1] Reinstall   - write v{0} again (repair files and shortcuts)", &[&inst::VERSION])
             } else if st.installed {
-                format!("[1] Install     - fresh install of v{}", inst::VERSION)
+                trf("[1] Install     - fresh install of v{0}", &[&inst::VERSION])
             } else {
-                format!("[1] Install     - install v{} to {}", inst::VERSION, ed.default_dir().display())
+                trf("[1] Install     - install v{0} to {1}", &[&inst::VERSION, &ed.default_dir().display()])
             };
             println!("  {}", label(true, install_txt));
             println!(
@@ -787,11 +794,11 @@ pub fn run(ed: Edition, payload: &'static [u8]) {
                 label(
                     can_update,
                     if can_update {
-                        format!("[2] Update      - v{installed_ver} -> v{} (keeps your settings and autostart)", inst::VERSION)
+                        trf("[2] Update      - v{0} -> v{1} (keeps your settings and autostart)", &[&installed_ver, &inst::VERSION])
                     } else if st.installed {
-                        format!("[2] Update      - not available: v{} is already up to date", st.version.as_deref().unwrap_or("?"))
+                        trf("[2] Update      - not available: v{0} is already up to date", &[&st.version.as_deref().unwrap_or("?")])
                     } else {
-                        "[2] Update      - not available: not installed yet".into()
+                        tr("[2] Update      - not available: not installed yet").into()
                     }
                 )
             );
@@ -800,13 +807,13 @@ pub fn run(ed: Edition, payload: &'static [u8]) {
                 label(
                     st.installed,
                     if st.installed {
-                        format!("[3] Uninstall   - remove {} from this PC", ed.name)
+                        trf("[3] Uninstall   - remove {0} from this PC", &[&ed.name])
                     } else {
-                        "[3] Uninstall   - not available: not installed".into()
+                        tr("[3] Uninstall   - not available: not installed").into()
                     }
                 )
             );
-            println!("  [0] Exit");
+            println!("  {}", tr("[0] Exit"));
             let mut valid = vec!['1', '0'];
             if can_update {
                 valid.push('2');
@@ -829,16 +836,16 @@ pub fn run(ed: Edition, payload: &'static [u8]) {
         Some(Action::Install) => install(&ed, payload, &log, &o, &st, false),
         Some(Action::Update) if st.installed => install(&ed, payload, &log, &o, &st, true),
         Some(Action::Update) => {
-            log.error("Nothing to update: not installed.");
+            log.error(tr("Nothing to update: not installed."));
             false
         }
-        Some(Action::Uninstall) if !o.silent && !log.ask(&format!("Really uninstall {}?", ed.name), false) => {
-            log.info("Cancelled. Nothing was changed.");
+        Some(Action::Uninstall) if !o.silent && !log.ask(&trf("Really uninstall {0}?", &[&ed.name]), false) => {
+            log.info(tr("Cancelled. Nothing was changed."));
             true
         }
         Some(Action::Uninstall) => uninstall(&ed, &log, &st),
         None => {
-            log.info("Exit. Nothing was changed.");
+            log.info(tr("Exit. Nothing was changed."));
             true
         }
     };
@@ -846,23 +853,24 @@ pub fn run(ed: Edition, payload: &'static [u8]) {
     if action.is_some() {
         println!();
         let after = read_state(&ed);
-        log.banner("RESULT");
+        log.banner(tr("RESULT"));
         if ok {
-            log.ok(format!(
-                "{} is now {}",
-                ed.name,
-                if after.installed { format!("installed (v{}) in {}", inst::VERSION, after.dir.display()) } else { "not installed".into() }
-            ));
+            let now = if after.installed {
+                trf("installed (v{0}) in {1}", &[&inst::VERSION, &after.dir.display()])
+            } else {
+                tr("not installed").into()
+            };
+            log.ok(trf("{0} is now {1}", &[&ed.name, &now]));
             if after.installed {
-                println!("  {:<22} {}", "Program file", file_line(&after.exe));
-                println!("  {:<22} {}", "Desktop shortcut", if after.desktop { ed.desktop_shortcut().display().to_string() } else { "(none)".into() });
-                println!("  {:<22} {}", "Start menu shortcut", if after.start_menu { ed.start_menu_shortcut().display().to_string() } else { "(none)".into() });
+                row("Program file", file_line(&after.exe));
+                row("Desktop shortcut", if after.desktop { ed.desktop_shortcut().display().to_string() } else { tr("(none)").into() });
+                row("Start menu shortcut", if after.start_menu { ed.start_menu_shortcut().display().to_string() } else { tr("(none)").into() });
                 if ed.run_value.is_some() {
-                    println!("  {:<22} {}", "Autostart", autostart_line(&ed, &after));
+                    row("Autostart", autostart_line(&ed, &after));
                 }
             }
         } else {
-            log.error("Setup did not complete. See the messages above.");
+            log.error(tr("Setup did not complete. See the messages above."));
         }
     }
     if ok {

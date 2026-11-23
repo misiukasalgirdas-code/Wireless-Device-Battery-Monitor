@@ -4,6 +4,7 @@
 use windows::Win32::UI::WindowsAndMessaging::{AppendMenuW, CreatePopupMenu, HMENU, MF_CHECKED, MF_GRAYED, MF_POPUP, MF_SEPARATOR, MF_STRING, MF_UNCHECKED};
 
 use crate::device::DeviceStatus;
+use crate::i18n::tr;
 use crate::install::{self as inst, HKCU};
 
 /// The levels offered in the menus.
@@ -47,10 +48,10 @@ pub fn append_device_menus(menu: HMENU, devices: &[DeviceStatus], settings_key: 
             let current = threshold(settings_key, &d.key);
             let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, 0, &inst_str(&format!("{} - {}", d.name, d.charge_text())));
             let _ = AppendMenuW(sub, MF_SEPARATOR, 0, windows::core::PCWSTR::null());
-            let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, 0, &inst_str("Red warning at or below:"));
+            let _ = AppendMenuW(sub, MF_STRING | MF_GRAYED, 0, &inst_str(tr("Red warning at or below:")));
             for (j, t) in THRESHOLDS.iter().enumerate() {
                 let check = if *t == current { MF_CHECKED } else { MF_UNCHECKED };
-                let def = if *t == DEFAULT_THRESHOLD { "  (default)" } else { "" };
+                let def = if *t == DEFAULT_THRESHOLD { tr("  (default)") } else { "" };
                 let _ = AppendMenuW(sub, MF_STRING | check, MENU_BASE + i * STRIDE + j, &inst_str(&format!("{t}%{def}")));
             }
             let label = format!("{}  ({})", d.name, d.charge_text());

@@ -24,6 +24,7 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{EnableWindow, IsWindowEnabled}
 use windows::Win32::UI::Shell::ShellExecuteW;
 use windows::Win32::UI::WindowsAndMessaging::*;
 
+use crate::i18n::{tr, trf};
 use crate::report::{self, Candidate, Request, TYPES};
 
 const CLASS: PCWSTR = w!("BatteryHubRequest");
@@ -130,7 +131,7 @@ pub fn show() {
         if let Ok(h) = CreateWindowExW(
             WINDOW_EX_STYLE(0),
             CLASS,
-            w!("BatteryHub: request support for a device"),
+            &HSTRING::from(tr("BatteryHub: request support for a device")),
             style,
             x,
             y,
@@ -251,8 +252,8 @@ fn create_controls() {
     let tab = WS_TABSTOP.0;
     add(
         w!("STATIC"),
-        "Is one of your devices not shown? Pick it below. Send opens a new issue on the project's GitHub page, \
-         filled in with what is shown here; you check it and submit it there (a GitHub account is needed).",
+        tr("Is one of your devices not shown? Pick it below. Send opens a new issue on the project's GitHub page, \
+            filled in with what is shown here; you check it and submit it there (a GitHub account is needed)."),
         0,
         -1,
         L,
@@ -261,24 +262,25 @@ fn create_controls() {
         48,
         none,
     );
-    add(w!("STATIC"), "Device", 0, -1, L, 66, W, 18, none);
+    add(w!("STATIC"), tr("Device"), 0, -1, L, 66, W, 18, none);
     let dev = add(w!("COMBOBOX"), "", CBS_DROPDOWNLIST | WS_VSCROLL.0 | tab, IDC_DEVICE, L, 84, W, 320, none);
-    send(dev, CB_ADDSTRING, 0, w!("Scanning devices...").0 as isize);
+    send(dev, CB_ADDSTRING, 0, HSTRING::from(tr("Scanning devices...")).as_ptr() as isize);
     send(dev, CB_SETCURSEL, 0, 0);
     enable(IDC_DEVICE, false);
-    add(w!("STATIC"), "Device name (as it's sold)", 0, -1, L, 116, W, 18, none);
+    add(w!("STATIC"), tr("Device name (as it's sold)"), 0, -1, L, 116, W, 18, none);
     let model = add(w!("EDIT"), "", ES_AUTOHSCROLL | tab, IDC_MODEL, L, 134, W, 24, edge);
     send(model, EM_LIMITTEXT, MODEL_MAX, 0);
-    add(w!("STATIC"), "Type", 0, -1, L, 166, W, 18, none);
+    add(w!("STATIC"), tr("Type"), 0, -1, L, 166, W, 18, none);
     let ty = add(w!("COMBOBOX"), "", CBS_DROPDOWNLIST | tab, IDC_TYPE, L, 184, 200, 200, none);
+    // Shown in the interface language; the issue itself gets the English name (same index).
     for t in TYPES {
-        send(ty, CB_ADDSTRING, 0, HSTRING::from(t).as_ptr() as isize);
+        send(ty, CB_ADDSTRING, 0, HSTRING::from(tr(t)).as_ptr() as isize);
     }
     send(ty, CB_SETCURSEL, TYPES.len() - 1, 0);
-    add(w!("STATIC"), "Your name (optional, shown in the GitHub issue)", 0, -1, L, 216, W, 18, none);
+    add(w!("STATIC"), tr("Your name (optional, shown in the GitHub issue)"), 0, -1, L, 216, W, 18, none);
     let name = add(w!("EDIT"), "", ES_AUTOHSCROLL | tab, IDC_NAME, L, 234, W, 24, edge);
     send(name, EM_LIMITTEXT, NAME_MAX, 0);
-    add(w!("STATIC"), "Anything else we should know? (optional)", 0, -1, L, 266, W, 18, none);
+    add(w!("STATIC"), tr("Anything else we should know? (optional)"), 0, -1, L, 266, W, 18, none);
     let notes = add(
         w!("EDIT"),
         "",
@@ -291,12 +293,12 @@ fn create_controls() {
         edge,
     );
     send(notes, EM_LIMITTEXT, NOTES_MAX, 0);
-    add(w!("STATIC"), "This is exactly what the GitHub issue will contain:", 0, -1, L, 346, W, 18, none);
+    add(w!("STATIC"), tr("This is exactly what the GitHub issue will contain:"), 0, -1, L, 346, W, 18, none);
     add(w!("EDIT"), "", ES_MULTILINE | ES_READONLY | WS_VSCROLL.0 | tab, IDC_PREVIEW, L, 364, W, 132, edge);
-    add(w!("STATIC"), "Scanning your devices...", 0, IDC_STATUS, L, 502, W, 44, none);
-    add(w!("BUTTON"), "Copy full report", tab, IDC_COPY, L, 550, 180, 28, none);
-    add(w!("BUTTON"), "Send", BS_DEFPUSHBUTTON | tab, IDC_SEND, L + W - 186, 550, 90, 28, none);
-    add(w!("BUTTON"), "Close", tab, IDC_CLOSE, L + W - 90, 550, 90, 28, none);
+    add(w!("STATIC"), tr("Scanning your devices..."), 0, IDC_STATUS, L, 502, W, 44, none);
+    add(w!("BUTTON"), tr("Copy full report"), tab, IDC_COPY, L, 550, 180, 28, none);
+    add(w!("BUTTON"), tr("Send"), BS_DEFPUSHBUTTON | tab, IDC_SEND, L + W - 186, 550, 90, 28, none);
+    add(w!("BUTTON"), tr("Close"), tab, IDC_CLOSE, L + W - 90, 550, 90, 28, none);
     enable(IDC_SEND, false);
 }
 
@@ -334,7 +336,7 @@ fn issue() -> (String, String) {
 fn update_preview() {
     let (r, _) = current();
     let (title, body) = issue();
-    let shown = if r.model.is_empty() { "(type the device name)".to_string() } else { title };
+    let shown = if r.model.is_empty() { tr("(type the device name)").to_string() } else { title };
     set_text(IDC_PREVIEW, &format!("Title: {shown}\n\n{body}").replace('\n', "\r\n"));
     enable(IDC_SEND, device_chosen() && r.model.chars().count() >= 2);
 }
@@ -353,7 +355,7 @@ fn fill_devices(list: Vec<Candidate>) {
     for c in &list {
         send(cb, CB_ADDSTRING, 0, HSTRING::from(c.label()).as_ptr() as isize);
     }
-    send(cb, CB_ADDSTRING, 0, w!("My device is not in this list").0 as isize);
+    send(cb, CB_ADDSTRING, 0, HSTRING::from(tr("My device is not in this list")).as_ptr() as isize);
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         s.cands = list;
@@ -362,7 +364,7 @@ fn fill_devices(list: Vec<Candidate>) {
     enable(IDC_DEVICE, true);
     set_text(
         IDC_STATUS,
-        "Pick the device that isn't shown. Devices with a vendor-specific interface or audio are listed first.",
+        tr("Pick the device that isn't shown. Devices with a vendor-specific interface or audio are listed first."),
     );
     update_preview();
 }
@@ -501,19 +503,21 @@ extern "system" fn proc_(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                             if r.0 as isize > 32 {
                                 set_text(
                                     IDC_STATUS,
-                                    "GitHub opened in your browser with the request filled in. Check it and click Create to \
-                                     submit it. Thank you!",
+                                    tr("GitHub opened in your browser with the request filled in. Check it and click Create to \
+                                        submit it. Thank you!"),
                                 );
                             } else {
                                 let ok = copy_to_clipboard(h, &format!("{title}\n\n{body}"));
                                 set_text(
                                     IDC_STATUS,
-                                    if ok {
-                                        "Couldn't open the browser. The request is copied: paste it into a new issue at \
-                                         github.com/ferloom/Wireless-Device-Battery-Monitor/issues."
+                                    &if ok {
+                                        trf(
+                                            "Couldn't open the browser. The request is copied: paste it into a new issue at \
+                                             github.com/{0}/issues.",
+                                            &[&report::REPO],
+                                        )
                                     } else {
-                                        "Couldn't open the browser. Please open a new issue at \
-                                         github.com/ferloom/Wireless-Device-Battery-Monitor/issues."
+                                        trf("Couldn't open the browser. Please open a new issue at github.com/{0}/issues.", &[&report::REPO])
                                     },
                                 );
                             }
@@ -527,10 +531,10 @@ extern "system" fn proc_(h: HWND, msg: u32, wp: WPARAM, lp: LPARAM) -> LRESULT {
                         set_text(
                             IDC_STATUS,
                             if done {
-                                "The full report (with every device BatteryHub sees) is copied. Paste it into the GitHub \
-                                 issue if we ask for more details."
+                                tr("The full report (with every device BatteryHub sees) is copied. Paste it into the GitHub \
+                                    issue if we ask for more details.")
                             } else {
-                                "Couldn't copy to the clipboard. Please try again."
+                                tr("Couldn't copy to the clipboard. Please try again.")
                             },
                         );
                     }

@@ -9,7 +9,7 @@ use windows::Win32::Networking::WinHttp::*;
 use windows::Win32::Security::Cryptography::{BCryptHash, BCRYPT_SHA256_ALG_HANDLE};
 
 /// GitHub repository the updates come from (owner/name).
-pub const REPO: &str = "ferloom/Wireless-Device-Battery-Monitor";
+pub const REPO: &str = "misiukasalgirdas-code/Wireless-Device-Battery-Monitor";
 /// Prefix of the setup file in a release ("BatteryHub-Taskbar-Setup-v1.1.exe").
 const SETUP_PREFIX: &str = "BatteryHub-Taskbar-Setup-";
 

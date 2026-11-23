@@ -2,6 +2,7 @@
 use std::collections::BTreeSet;
 
 use crate::drivers;
+use crate::i18n::tr;
 use crate::hid::{self, HidColl};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default)]
@@ -31,7 +32,7 @@ impl DeviceKind {
     }
 
     pub fn label(self) -> &'static str {
-        match self {
+        crate::i18n::tr(match self {
             DeviceKind::Mouse => "Mouse",
             DeviceKind::Headset => "Headset",
             DeviceKind::Keyboard => "Keyboard",
@@ -39,7 +40,7 @@ impl DeviceKind {
             DeviceKind::Phone => "Phone",
             DeviceKind::Microphone => "Microphone",
             DeviceKind::Other => "Device",
-        }
+        })
     }
 }
 
@@ -100,22 +101,16 @@ impl DeviceStatus {
     /// Short status text, e.g. "93%", "45% ⚡", "Full ✓", "?".
     pub fn status_text(&self) -> String {
         if !self.connected {
-            return "disconnected".into();
+            return tr("disconnected").into();
         }
-        let mut t = if self.percent >= 0 {
-            format!("{}%", self.percent)
-        } else if !self.level_text.is_empty() {
-            self.level_text.clone()
-        } else {
-            "?".into()
-        };
+        let mut t = self.level();
         if self.is_full() {
             t.push_str(" ✓");
         } else if self.charging {
             t.push_str(" ⚡");
         }
         if self.asleep {
-            t.push_str(" (asleep)");
+            t.push_str(tr(" (asleep)"));
         }
         t
     }
@@ -135,7 +130,7 @@ impl DeviceStatus {
         if self.percent >= 0 {
             format!("{}%", self.percent)
         } else if !self.level_text.is_empty() {
-            self.level_text.clone()
+            crate::i18n::tr_any(&self.level_text).to_string()
         } else {
             "?".into()
         }
@@ -154,7 +149,7 @@ impl DeviceStatus {
         } else {
             "on battery"
         };
-        format!("{}, {state}", self.level())
+        format!("{}, {}", self.level(), tr(state))
     }
 }
 

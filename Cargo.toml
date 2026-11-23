@@ -19,6 +19,7 @@ path = "src/bin/taskbar.rs"
 version = "0.62.2"
 features = [
   "Win32_Foundation",
+  "Win32_Globalization",
   "Win32_Networking_WinHttp",
   "Win32_Security_Cryptography",
   "Win32_Security",

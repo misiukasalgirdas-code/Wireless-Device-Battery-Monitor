@@ -403,7 +403,7 @@ mod tests {
         assert_eq!(url_encode("a b&c=ü/#"), "a%20b%26c%3D%C3%BC%2F%23");
         assert_eq!(
             issue_url("T 1", "x\ny"),
-            "https://github.com/ferloom/Wireless-Device-Battery-Monitor/issues/new?title=T%201&body=x%0Ay"
+            "https://github.com/misiukasalgirdas-code/Wireless-Device-Battery-Monitor/issues/new?title=T%201&body=x%0Ay"
         );
     }
 

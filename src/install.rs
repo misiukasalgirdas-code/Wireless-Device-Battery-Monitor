@@ -6,6 +6,8 @@ use std::io::Write;
 use std::path::PathBuf;
 use std::time::Instant;
 
+use crate::i18n::{tr, trf};
+
 use windows::core::{Interface, HSTRING, PCWSTR, PWSTR};
 use windows::Win32::Foundation::ERROR_SUCCESS;
 use windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoTaskMemFree, IPersistFile, CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED};
@@ -177,7 +179,7 @@ impl Log {
     /// Asks a yes/no question on the console; Enter picks `default`.
     pub fn ask(&self, question: &str, default: bool) -> bool {
         loop {
-            let hint = if default { "[Y/n]" } else { "[y/N]" };
+            let hint = tr(if default { "[Y/n]" } else { "[y/N]" });
             if self.color {
                 print!("\x1b[1;93m  ?  {question} {hint}: {RESET}");
             } else {
@@ -190,15 +192,15 @@ impl Log {
             }
             match s.trim().to_lowercase().as_str() {
                 "" => return default,
-                "y" | "yes" | "t" | "tak" => return true,
-                "n" | "no" | "nie" => return false,
-                _ => println!("     Please answer y or n."),
+                "y" | "yes" | "t" | "tak" | "taip" => return true,
+                "n" | "no" | "nie" | "ne" => return false,
+                _ => println!("{}", tr("     Please answer y or n.")),
             }
         }
     }
 
     pub fn pause(&self) {
-        print!("\nPress Enter to close this window...");
+        print!("{}", tr("\nPress Enter to close this window..."));
         let _ = std::io::stdout().flush();
         let mut s = String::new();
         let _ = std::io::stdin().read_line(&mut s);
@@ -327,7 +329,7 @@ pub fn fmt_bytes(n: u64) -> String {
         }
         out.push(c);
     }
-    out + " bytes"
+    trf("{0} bytes", &[&out])
 }
 
 /// Asks a running copy of `ed` to exit (WM_CLOSE to its main window); force-kills it if it is
@@ -337,29 +339,29 @@ pub fn stop_running(ed: &Edition, log: &Log) -> bool {
     use windows::Win32::UI::WindowsAndMessaging::{FindWindowW, PostMessageW, WM_CLOSE};
     let class = HSTRING::from(ed.window_class);
     let find = || unsafe { FindWindowW(&class, None).ok().filter(|h| !h.0.is_null()) };
-    log.info(format!("Looking for a running {} (window class \"{}\")", ed.name, ed.window_class));
+    log.info(trf("Looking for a running {0} (window class \"{1}\")", &[&ed.name, &ed.window_class]));
     let Some(h) = find() else {
-        log.detail("not running");
+        log.detail(tr("not running"));
         return false;
     };
-    log.info(format!("{} is running (window {:?}), asking it to exit...", ed.name, h.0));
+    log.info(trf("{0} is running (window {1}), asking it to exit...", &[&ed.name, &format!("{:?}", h.0)]));
     unsafe {
         let _ = PostMessageW(Some(h), WM_CLOSE, WPARAM(0), LPARAM(0));
     }
     for i in 0..30 {
         std::thread::sleep(std::time::Duration::from_millis(100));
         if find().is_none() {
-            log.ok(format!("{} exited after {} ms.", ed.name, (i + 1) * 100));
+            log.ok(trf("{0} exited after {1} ms.", &[&ed.name, &((i + 1) * 100)]));
             std::thread::sleep(std::time::Duration::from_millis(300)); // let the process release its exe
             return true;
         }
     }
-    log.warn(format!("{} did not exit in time, terminating {}...", ed.name, ed.exe));
+    log.warn(trf("{0} did not exit in time, terminating {1}...", &[&ed.name, &ed.exe]));
     use std::os::windows::process::CommandExt;
     let st = std::process::Command::new("taskkill").args(["/F", "/IM", ed.exe]).creation_flags(0x0800_0000).output();
     match st {
-        Ok(o) if o.status.success() => log.ok("Process terminated."),
-        _ => log.error("Could not terminate the process."),
+        Ok(o) if o.status.success() => log.ok(tr("Process terminated.")),
+        _ => log.error(tr("Could not terminate the process.")),
     }
     std::thread::sleep(std::time::Duration::from_millis(300));
     true
