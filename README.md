@@ -1,6 +1,6 @@
 <p align="center"><img src="res/batteryhub.png" width="112" alt="BatteryHub icon"></p>
 
-<h1 align="center">BatteryHub v1.4.1</h1>
+<h1 align="center">BatteryHub v1.4.2</h1>
 
 <p align="center">
 <b>An ultra-lightweight Rust implementation of BatteryHub for Windows.</b><br>
@@ -45,7 +45,7 @@ Sąsaja yra **anglų** ir **lietuvių** kalbomis. Lietuviškoje Windows programa
 
 ## Download
 
-Get **`BatteryHub-Taskbar-Setup-v1.4.1.exe`** from the [**latest release**](../../releases/latest), run it and choose **[1] Install**.
+Get **`BatteryHub-Taskbar-Setup-v1.4.2.exe`** from the [**latest release**](../../releases/latest), run it and choose **[1] Install**.
 
 - No administrator rights needed (per-user install).
 - Already installed? Use *Check for updates...* in the right-click menu, or run the new setup and choose **[2] Update**.
@@ -219,7 +219,9 @@ Requirements: Rust 1.99 or newer (stable, MSVC toolchain; the crates use the 202
 .\build-release.ps1
 ```
 
-This builds the program, then the setup with the program embedded (`installer/`, `BH_PAYLOAD_DIR`), and writes `release\BatteryHub-Taskbar-Setup-v1.4.1.exe` and `SHA256SUMS.txt`. The version comes from the `VERSION` file (up to four parts, e.g. `1.0.1.1`).
+This builds the program, then the setup with the program embedded (`installer/`, `BH_PAYLOAD_DIR`), and writes `release\BatteryHub-Taskbar-Setup-v1.4.2.exe` and `SHA256SUMS.txt`. The version comes from the `VERSION` file (up to four parts, e.g. `1.0.1.1`).
+
+Releases are made by GitHub Actions (`.github/workflows/release.yml`): set the new version in `VERSION`, add its section to `RELEASE_NOTES.md`, commit, then push a tag with the same version (`git tag v1.4.2`, `git push origin v1.4.2`). The workflow runs `build-release.ps1` and publishes the setup and `SHA256SUMS.txt` with `RELEASE_NOTES.md` as the description.
 
 | Path | Contents |
 |---|---|
